@@ -3,7 +3,9 @@ package com.example.tvmediaplayer.ui
 import android.content.ComponentName
 import android.os.Bundle
 import android.text.InputType
+import android.view.KeyEvent
 import android.view.Gravity
+import android.view.View
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -65,6 +67,32 @@ class TvBrowseFragment : BrowseSupportFragment() {
         }
     }
 
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        view.isFocusableInTouchMode = true
+        view.requestFocus()
+        view.setOnKeyListener { _, keyCode, event ->
+            if (event.action != KeyEvent.ACTION_UP) return@setOnKeyListener false
+            when (keyCode) {
+                KeyEvent.KEYCODE_BACK -> {
+                    if (viewModel.state.value.currentPath.isNotBlank()) {
+                        viewModel.enterDirectory(SmbEntry("..", viewModel.state.value.currentPath, true))
+                        true
+                    } else {
+                        false
+                    }
+                }
+
+                KeyEvent.KEYCODE_MENU -> {
+                    showConfigDialog()
+                    true
+                }
+
+                else -> false
+            }
+        }
+    }
+
     override fun onStart() {
         super.onStart()
         ensureController()
@@ -81,6 +109,9 @@ class TvBrowseFragment : BrowseSupportFragment() {
         val configRow = ArrayObjectAdapter(SimpleTextPresenter()).apply {
             add(UiItem.ActionItem(Action.EDIT_CONFIG, "连接：${configText(state.config)}"))
             add(UiItem.ActionItem(Action.REFRESH, "刷新当前目录"))
+            if (state.error != null) {
+                add(UiItem.ActionItem(Action.RETRY, "重试连接"))
+            }
             add(UiItem.ActionItem(Action.PLAY_ALL, "播放当前目录（顺序）"))
             add(UiItem.ActionItem(Action.PLAY_SHUFFLE, "播放当前目录（随机）"))
         }
@@ -117,6 +148,7 @@ class TvBrowseFragment : BrowseSupportFragment() {
         when (item.action) {
             Action.EDIT_CONFIG -> showConfigDialog()
             Action.REFRESH -> viewModel.loadCurrentPath()
+            Action.RETRY -> viewModel.loadCurrentPath()
             Action.PLAY_ALL -> playDirectory(shuffle = false)
             Action.PLAY_SHUFFLE -> playDirectory(shuffle = true)
         }
@@ -287,6 +319,7 @@ class TvBrowseFragment : BrowseSupportFragment() {
     private enum class Action {
         EDIT_CONFIG,
         REFRESH,
+        RETRY,
         PLAY_ALL,
         PLAY_SHUFFLE
     }

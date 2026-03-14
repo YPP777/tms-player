@@ -2,6 +2,7 @@ package com.example.tvmediaplayer.data.repo
 
 import com.example.tvmediaplayer.domain.model.SmbConfig
 import com.example.tvmediaplayer.domain.model.SmbEntry
+import com.example.tvmediaplayer.domain.model.SmbFailure
 import com.example.tvmediaplayer.domain.repo.SmbRepository
 import java.util.Properties
 import jcifs.CIFSContext
@@ -25,14 +26,23 @@ class JcifsSmbRepository : SmbRepository {
         val context = buildContext(config)
         val directory = SmbFile(url, context)
 
-        try {
-            directory.listFiles()
-                .orEmpty()
-                .sortedBy { it.name.lowercase() }
-                .mapNotNull { file -> mapToEntry(file, currentPath) }
-        } catch (ex: SmbException) {
-            throw ex
-        }
+        listWithRetry(directory)
+            .orEmpty()
+            .sortedBy { it.name.lowercase() }
+            .mapNotNull { file -> mapToEntry(file, currentPath) }
+    }
+
+    private fun listWithRetry(directory: SmbFile): Array<SmbFile>? {
+        val first = runCatching { directory.listFiles() }
+        if (first.isSuccess) return first.getOrThrow()
+
+        val firstError = first.exceptionOrNull() ?: return first.getOrNull()
+        val failure = SmbFailureMapper.map(firstError)
+        val retryable = failure == SmbFailure.TIMEOUT || failure == SmbFailure.HOST_UNREACHABLE
+        if (!retryable) throw firstError
+
+        return runCatching { directory.listFiles() }
+            .getOrElse { throw it }
     }
 
     private fun mapToEntry(file: SmbFile, currentPath: String): SmbEntry? {
@@ -99,4 +109,3 @@ class JcifsSmbRepository : SmbRepository {
     private fun combinePath(base: String, child: String): String =
         if (base.isBlank()) child else "$base/$child"
 }
-
