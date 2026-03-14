@@ -29,6 +29,7 @@
 25. 已推进 Phase 5（首版）：增加遥控器快捷键支持（`Back` 返回上级目录，`Menu` 打开 SMB 配置）。
 26. 已增加错误态快速重试入口（列表操作区出现“重试连接”）。
 27. SMB 目录读取加入弱网重试策略（超时/不可达场景自动重试一次）。
+28. 已完成 Phase 6（交付收敛）：新增发布验收清单 `spec/release-checklist.md`。
 
 ## 1. 当前项目定位
 
@@ -79,7 +80,9 @@ tv-media-player/
 │        └─ mipmap-anydpi-v26/{ic_launcher.xml,ic_launcher_round.xml}
 └─ spec/
    ├─ plan.md
+   ├─ next-steps.md
    └─ design.md
+   └─ release-checklist.md
 ```
 
 ## 3. 常用命令
