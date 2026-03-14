@@ -9,4 +9,6 @@ object AppFonts {
     fun regular(context: Context): Typeface? = ResourcesCompat.getFont(context, R.font.misans_regular)
 
     fun medium(context: Context): Typeface? = ResourcesCompat.getFont(context, R.font.misans_medium)
+
+    fun bold(context: Context): Typeface? = ResourcesCompat.getFont(context, R.font.misans_bold)
 }

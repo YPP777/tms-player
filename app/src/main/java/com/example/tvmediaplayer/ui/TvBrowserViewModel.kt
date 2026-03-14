@@ -53,8 +53,8 @@ class TvBrowserViewModel(
         }
     }
 
-    fun saveConfig(config: SmbConfig, name: String) {
-        val id = _state.value.activeConnectionId ?: configStore.newConnectionId()
+    fun saveConfig(config: SmbConfig, name: String, saveAsNew: Boolean = false) {
+        val id = if (saveAsNew) configStore.newConnectionId() else (_state.value.activeConnectionId ?: configStore.newConnectionId())
         val actualName = name.ifBlank { defaultConnectionName(config) }
         val saved = SavedSmbConnection(id = id, name = actualName, config = config)
 
@@ -96,7 +96,7 @@ class TvBrowserViewModel(
     fun loadCurrentPath() {
         val snapshot = _state.value
         if (snapshot.config.host.isBlank()) {
-            _state.update { it.copy(error = "SMB host is required") }
+            _state.update { it.copy(error = "SMB 主机地址不能为空") }
             return
         }
         viewModelScope.launch {
@@ -114,7 +114,7 @@ class TvBrowserViewModel(
 
     fun enterDirectory(entry: SmbEntry) {
         if (!entry.isDirectory) {
-            _state.update { it.copy(toast = "TODO: play ${entry.name}") }
+            _state.update { it.copy(toast = "待实现：播放 ${entry.name}") }
             return
         }
         val current = _state.value.currentPath
@@ -128,7 +128,7 @@ class TvBrowserViewModel(
     }
 
     private fun defaultConnectionName(config: SmbConfig): String {
-        val share = config.share.ifBlank { "all-shares" }
+        val share = config.share.ifBlank { "全部共享" }
         return "${config.host} / $share"
     }
 

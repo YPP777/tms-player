@@ -41,7 +41,7 @@ class TvBrowseFragment : VerticalGridSupportFragment() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        title = "TV Music Player"
+        title = "电视音乐播放器"
 
         gridPresenter = VerticalGridPresenter().apply {
             numberOfColumns = 1
@@ -82,7 +82,7 @@ class TvBrowseFragment : VerticalGridSupportFragment() {
                     }
                 }
                 KeyEvent.KEYCODE_MENU -> {
-                    showConfigDialog()
+                    showConnectionManagerDialog()
                     true
                 }
                 else -> false
@@ -103,45 +103,48 @@ class TvBrowseFragment : VerticalGridSupportFragment() {
     private fun render(state: TvBrowserState) {
         listAdapter.clear()
 
-        listAdapter.add("== Connection & Actions ==")
-        listAdapter.add(UiItem.ActionItem(Action.EDIT_CONFIG, "Connection: ${configText(state.config)}"))
-        listAdapter.add(UiItem.ActionItem(Action.SWITCH_CONFIG, "Switch saved connections (${state.savedConnections.size})"))
-        listAdapter.add(UiItem.ActionItem(Action.REFRESH, "Refresh current directory"))
-        if (state.error != null) {
-            listAdapter.add(UiItem.ActionItem(Action.RETRY, "Retry connection"))
-        }
-        listAdapter.add(UiItem.ActionItem(Action.PLAY_ALL, "Play current directory (sequential)"))
-        listAdapter.add(UiItem.ActionItem(Action.PLAY_SHUFFLE, "Play current directory (shuffle)"))
+        listAdapter.add("【连接管理】")
+        listAdapter.add("当前连接：${configText(state.config)}")
+        listAdapter.add("已保存连接：${state.savedConnections.size} 个")
+        listAdapter.add(UiItem.ActionItem(Action.OPEN_CONNECTION_MANAGER, "管理连接（编辑 / 切换 / 新建）"))
 
+        listAdapter.add("【文件浏览】")
         val pathLabel = if (state.currentPath.isBlank()) "/" else "/${state.currentPath}"
-        listAdapter.add("== Files: $pathLabel ==")
+        listAdapter.add("当前路径：$pathLabel")
+        listAdapter.add(UiItem.ActionItem(Action.REFRESH, "刷新当前目录"))
+        if (state.error != null) {
+            listAdapter.add(UiItem.ActionItem(Action.RETRY, "重试连接"))
+        }
 
         if (state.loading) {
-            listAdapter.add("Loading...")
+            listAdapter.add("加载中...")
         } else {
             if (state.currentPath.isNotBlank()) {
-                listAdapter.add(UiItem.FileItem(SmbEntry("..", state.currentPath, true), "[DIR] .. (up)"))
+                listAdapter.add(UiItem.FileItem(SmbEntry("..", state.currentPath, true), "[目录] ..（上一级）"))
             }
             if (state.entries.isEmpty()) {
-                listAdapter.add("Current directory is empty")
+                listAdapter.add("当前目录为空")
             } else {
                 state.entries.forEach { entry ->
-                    val icon = if (entry.isDirectory) "[DIR]" else "[AUDIO]"
+                    val icon = if (entry.isDirectory) "[目录]" else "[音频]"
                     listAdapter.add(UiItem.FileItem(entry, "$icon ${entry.name}"))
                 }
             }
         }
 
+        listAdapter.add("【播放控制】")
+        listAdapter.add(UiItem.ActionItem(Action.PLAY_ALL, "播放当前目录（顺序）"))
+        listAdapter.add(UiItem.ActionItem(Action.PLAY_SHUFFLE, "播放当前目录（随机）"))
+
         state.error?.let {
-            listAdapter.add("== Error ==")
+            listAdapter.add("【连接状态】")
             listAdapter.add(it)
         }
     }
 
     private fun onActionClicked(item: UiItem.ActionItem) {
         when (item.action) {
-            Action.EDIT_CONFIG -> showConfigDialog()
-            Action.SWITCH_CONFIG -> showSwitchDialog()
+            Action.OPEN_CONNECTION_MANAGER -> showConnectionManagerDialog()
             Action.REFRESH -> viewModel.loadCurrentPath()
             Action.RETRY -> viewModel.loadCurrentPath()
             Action.PLAY_ALL -> playDirectory(shuffle = false)
@@ -166,12 +169,12 @@ class TvBrowseFragment : VerticalGridSupportFragment() {
 
     private fun playQueue(queue: List<SmbEntry>, startIndex: Int, shuffle: Boolean) {
         if (queue.isEmpty()) {
-            Toast.makeText(requireContext(), "No playable audio in current directory", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "当前目录没有可播放音频", Toast.LENGTH_SHORT).show()
             return
         }
         val controller = mediaController
         if (controller == null) {
-            Toast.makeText(requireContext(), "Player is initializing, retry shortly", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "播放器初始化中，请稍后重试", Toast.LENGTH_SHORT).show()
             ensureController()
             return
         }
@@ -203,7 +206,7 @@ class TvBrowseFragment : VerticalGridSupportFragment() {
                     .onSuccess { controller -> mediaController = controller }
                     .onFailure {
                         controllerFuture = null
-                        Toast.makeText(requireContext(), "Failed to connect player", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(requireContext(), "播放器连接失败", Toast.LENGTH_SHORT).show()
                     }
             },
             MoreExecutors.directExecutor()
@@ -216,69 +219,84 @@ class TvBrowseFragment : VerticalGridSupportFragment() {
         mediaController = null
     }
 
-    private fun showSwitchDialog() {
-        val saved = viewModel.state.value.savedConnections
-        if (saved.isEmpty()) {
-            Toast.makeText(requireContext(), "No saved connection yet", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val labels = saved.map { "${it.name} (${it.config.host})" }.toTypedArray()
+    private fun showConnectionManagerDialog() {
         AlertDialog.Builder(requireContext())
-            .setTitle("Switch SMB connection")
-            .setItems(labels) { _, which ->
-                viewModel.switchConnection(saved[which].id)
-            }
-            .setNegativeButton("Cancel", null)
+            .setTitle("连接管理")
+            .setMessage("请选择操作")
+            .setPositiveButton("编辑当前连接") { _, _ -> showConfigDialog(false) }
+            .setNeutralButton("新建连接") { _, _ -> showConfigDialog(true) }
+            .setNegativeButton("切换连接") { _, _ -> showSwitchDialog() }
             .show()
     }
 
-    private fun showConfigDialog() {
+    private fun showSwitchDialog() {
+        val saved = viewModel.state.value.savedConnections
+        if (saved.isEmpty()) {
+            Toast.makeText(requireContext(), "还没有已保存连接，请先保存一个连接", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val labels = saved.map { "${it.name}（${it.config.host}）" }.toTypedArray()
+        AlertDialog.Builder(requireContext())
+            .setTitle("切换 SMB 连接")
+            .setItems(labels) { _, which ->
+                viewModel.switchConnection(saved[which].id)
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun showConfigDialog(saveAsNewDefault: Boolean) {
         val current = viewModel.state.value.config
         val context = requireContext()
 
         val nameInput = EditText(context).apply {
-            hint = "Connection name, e.g. Home NAS"
+            hint = "连接名称，例如 客厅 NAS"
             typeface = AppFonts.regular(context)
             val active = viewModel.state.value.savedConnections
                 .firstOrNull { it.id == viewModel.state.value.activeConnectionId }
             setText(active?.name.orEmpty())
         }
         val hostInput = EditText(context).apply {
-            hint = "Server host, e.g. 192.168.0.10"
+            hint = "SMB 服务器地址，例如 192.168.0.10"
             typeface = AppFonts.regular(context)
             setText(current.host)
         }
         val shareInput = EditText(context).apply {
-            hint = "Share name (optional; empty shows all shares)"
+            hint = "共享名（可留空，留空显示所有共享）"
             typeface = AppFonts.regular(context)
             setText(current.share)
         }
         val pathInput = EditText(context).apply {
-            hint = "Sub path (optional)"
+            hint = "子路径（可留空）"
             typeface = AppFonts.regular(context)
             setText(current.path)
         }
         val userInput = EditText(context).apply {
-            hint = "Username (optional for guest)"
+            hint = "用户名（访客可留空）"
             typeface = AppFonts.regular(context)
             setText(current.username)
         }
         val passInput = EditText(context).apply {
-            hint = "Password (optional for guest)"
+            hint = "密码（访客可留空）"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             typeface = AppFonts.regular(context)
             setText(current.password)
         }
         val guestCheck = CheckBox(context).apply {
-            text = "Guest / Anonymous"
+            text = "访客 / 匿名"
             typeface = AppFonts.regular(context)
             isChecked = current.guest
         }
         val smb1Check = CheckBox(context).apply {
-            text = "Enable SMB1 compatibility (off by default)"
+            text = "启用 SMB1 兼容（默认关闭）"
             typeface = AppFonts.regular(context)
             isChecked = current.smb1Enabled
+        }
+        val saveAsNewCheck = CheckBox(context).apply {
+            text = "另存为新连接"
+            typeface = AppFonts.regular(context)
+            isChecked = saveAsNewDefault
         }
 
         val container = LinearLayout(context).apply {
@@ -292,13 +310,14 @@ class TvBrowseFragment : VerticalGridSupportFragment() {
             addView(passInput)
             addView(guestCheck)
             addView(smb1Check)
+            addView(saveAsNewCheck)
         }
 
         AlertDialog.Builder(context)
-            .setTitle("SMB connection")
+            .setTitle("SMB 连接配置")
             .setView(container)
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Save and connect") { _, _ ->
+            .setNegativeButton("取消", null)
+            .setPositiveButton("保存并连接") { _, _ ->
                 val config = SmbConfig(
                     host = hostInput.text.toString().trim(),
                     share = shareInput.text.toString().trim(),
@@ -308,15 +327,19 @@ class TvBrowseFragment : VerticalGridSupportFragment() {
                     guest = guestCheck.isChecked,
                     smb1Enabled = smb1Check.isChecked
                 )
-                viewModel.saveConfig(config, nameInput.text.toString().trim())
+                viewModel.saveConfig(
+                    config = config,
+                    name = nameInput.text.toString().trim(),
+                    saveAsNew = saveAsNewCheck.isChecked
+                )
             }
             .show()
     }
 
     private fun configText(config: SmbConfig): String {
-        if (config.host.isBlank()) return "Not configured"
+        if (config.host.isBlank()) return "未配置"
         return if (config.share.isBlank()) {
-            "smb://${config.host} (all shares)"
+            "smb://${config.host}（全部共享）"
         } else {
             val path = config.normalizedPath()
             if (path.isBlank()) "smb://${config.host}/${config.share}"
@@ -335,8 +358,7 @@ class TvBrowseFragment : VerticalGridSupportFragment() {
     }
 
     private enum class Action {
-        EDIT_CONFIG,
-        SWITCH_CONFIG,
+        OPEN_CONNECTION_MANAGER,
         REFRESH,
         RETRY,
         PLAY_ALL,
