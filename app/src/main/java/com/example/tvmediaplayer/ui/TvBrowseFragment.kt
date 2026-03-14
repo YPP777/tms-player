@@ -103,10 +103,13 @@ class TvBrowseFragment : VerticalGridSupportFragment() {
     private fun render(state: TvBrowserState) {
         listAdapter.clear()
 
-        listAdapter.add("【连接管理】")
-        listAdapter.add("当前连接：${configText(state.config)}")
-        listAdapter.add("已保存连接：${state.savedConnections.size} 个")
-        listAdapter.add(UiItem.ActionItem(Action.OPEN_CONNECTION_MANAGER, "管理连接（编辑 / 切换 / 新建）"))
+        val showConnectionSection = state.currentPath.isBlank()
+        if (showConnectionSection) {
+            listAdapter.add("【连接管理】")
+            listAdapter.add("当前连接：${configText(state.config)}")
+            listAdapter.add("已保存连接：${state.savedConnections.size} 个")
+            listAdapter.add(UiItem.ActionItem(Action.OPEN_CONNECTION_MANAGER, "管理连接（编辑 / 切换 / 新建）"))
+        }
 
         listAdapter.add("【文件浏览】")
         val pathLabel = if (state.currentPath.isBlank()) "/" else "/${state.currentPath}"
