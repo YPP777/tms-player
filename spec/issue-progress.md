@@ -43,3 +43,11 @@
   - 进度条交互增强：在 `SeekBar` 聚焦时支持 `OK/Enter` 切换播放/暂停；左右键维持分档快进快退。
 - 本轮验证：
   - `assembleDevDebug` 通过。
+
+## 2026-03-15（第 4 轮）
+
+- 输入：用户提供 `sample/トラック01.mp3` 与 `sample/トラック01.lrc` 用于验证歌词/封面。
+- 验证结论：
+  - `LrcParser` 可正常解析该 `.lrc`，且包含长文本歌词行。
+  - `jaudiotagger` 可从该 `.mp3` 读取到内嵌封面（`firstArtwork` 非空且有字节数据）。
+  - 定向单测 `SampleMediaValidationTest` 通过，说明样本资源本身有效。
