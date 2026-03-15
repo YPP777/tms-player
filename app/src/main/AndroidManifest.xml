@@ -35,6 +35,16 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".ui.PlaybackActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
+        <activity
+            android:name=".ui.LyricsFullscreenActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
         <service
             android:name=".playback.PlaybackService"
             android:enabled="true"

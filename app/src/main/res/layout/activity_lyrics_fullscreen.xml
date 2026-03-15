@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#0B1220"
+    android:padding="24dp">
+
+    <TextView
+        android:id="@+id/tv_fullscreen_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="歌词全屏"
+        android:textColor="#EAF2FF"
+        android:textSize="28sp"
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:fontFamily="@font/misans_bold" />
+
+    <ScrollView
+        android:id="@+id/scroll_lyrics"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="16dp"
+        android:fadeScrollbars="false">
+
+        <TextView
+            android:id="@+id/tv_fullscreen_lyrics"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#CBD5E1"
+            android:textSize="28sp"
+            android:lineSpacingExtra="8dp"
+            android:fontFamily="@font/misans_regular" />
+    </ScrollView>
+
+    <Button
+        android:id="@+id/btn_close_fullscreen_lyrics"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="返回播放页"
+        android:textAllCaps="false"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp"
+        android:background="@drawable/bg_button_primary"
+        android:fontFamily="@font/misans_medium" />
+
+</LinearLayout>
