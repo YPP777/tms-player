@@ -208,6 +208,23 @@
                         android:background="@drawable/bg_button_green"
                         android:fontFamily="@font/misans_medium" />
                 </LinearLayout>
+
+                <Button
+                    android:id="@+id/btn_now_playing"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:minWidth="180dp"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:text="回到当前播放"
+                    android:textAllCaps="false"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp"
+                    android:background="@drawable/bg_button_primary"
+                    android:fontFamily="@font/misans_medium"
+                    android:visibility="gone" />
             </LinearLayout>
 
         </LinearLayout>

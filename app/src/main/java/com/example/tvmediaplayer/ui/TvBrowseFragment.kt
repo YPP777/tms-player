@@ -2,6 +2,7 @@
 
 import android.app.AlertDialog
 import android.content.ComponentName
+import android.content.Intent
 import android.os.Bundle
 import android.text.InputType
 import android.view.KeyEvent
@@ -17,12 +18,14 @@ import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
+import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.example.tvmediaplayer.R
 import com.example.tvmediaplayer.domain.model.SmbConfig
 import com.example.tvmediaplayer.domain.model.SmbEntry
 import com.example.tvmediaplayer.playback.PlaybackQueueBuilder
+import com.example.tvmediaplayer.playback.PlaybackConfigStore
 import com.example.tvmediaplayer.playback.PlaybackService
 import com.example.tvmediaplayer.playback.SmbMediaItemFactory
 import com.google.common.util.concurrent.ListenableFuture
@@ -52,7 +55,19 @@ class TvBrowseFragment : Fragment() {
     private lateinit var tvStatus: TextView
     private lateinit var btnPlayAll: Button
     private lateinit var btnPlayShuffle: Button
+    private lateinit var btnNowPlaying: Button
     private lateinit var filesContainer: LinearLayout
+    private val browsePlayerListener = object : Player.Listener {
+        override fun onEvents(player: Player, events: Player.Events) {
+            if (
+                events.contains(Player.EVENT_MEDIA_METADATA_CHANGED) ||
+                events.contains(Player.EVENT_PLAYBACK_STATE_CHANGED) ||
+                events.contains(Player.EVENT_TIMELINE_CHANGED)
+            ) {
+                updateNowPlayingButton()
+            }
+        }
+    }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return inflater.inflate(R.layout.fragment_tv_browser, container, false)
@@ -87,6 +102,7 @@ class TvBrowseFragment : Fragment() {
         tvStatus = root.findViewById(R.id.tv_status)
         btnPlayAll = root.findViewById(R.id.btn_play_all)
         btnPlayShuffle = root.findViewById(R.id.btn_play_shuffle)
+        btnNowPlaying = root.findViewById(R.id.btn_now_playing)
         filesContainer = root.findViewById(R.id.container_files)
     }
 
@@ -97,6 +113,9 @@ class TvBrowseFragment : Fragment() {
         btnRetry.setOnClickListener { viewModel.loadCurrentPath() }
         btnPlayAll.setOnClickListener { playDirectory(shuffle = false) }
         btnPlayShuffle.setOnClickListener { playDirectory(shuffle = true) }
+        btnNowPlaying.setOnClickListener {
+            startActivity(Intent(requireContext(), PlaybackActivity::class.java))
+        }
 
         root.isFocusableInTouchMode = true
         root.requestFocus()
@@ -111,6 +130,7 @@ class TvBrowseFragment : Fragment() {
                 else -> false
             }
         }
+        updateNowPlayingButton()
     }
 
     private fun collectState() {
@@ -210,14 +230,44 @@ class TvBrowseFragment : Fragment() {
         }
 
         val config = viewModel.state.value.config
+        PlaybackConfigStore.update(config)
         lifecycleScope.launch {
-            val mediaItems = withContext(Dispatchers.IO) {
-                mediaItemFactory.create(config, queue)
+            runCatching {
+                val targetEntry = queue[startIndex.coerceIn(0, queue.lastIndex)]
+                val targetUri = targetEntry.streamUri.orEmpty()
+                val queueUris = queue.mapNotNull { it.streamUri }
+                val existingUris = currentQueueUris(controller)
+
+                if (existingUris == queueUris && controller.currentMediaItem?.localConfiguration?.uri.toString() == targetUri) {
+                    if (!controller.isPlaying) {
+                        controller.play()
+                    }
+                    return@runCatching
+                }
+
+                if (existingUris == queueUris) {
+                    controller.setShuffleModeEnabled(shuffle)
+                    controller.seekToDefaultPosition(startIndex.coerceIn(0, controller.mediaItemCount - 1))
+                    controller.play()
+                    return@runCatching
+                }
+
+                val mediaItems = withContext(Dispatchers.IO) {
+                    mediaItemFactory.create(config, queue)
+                }
+                controller.setShuffleModeEnabled(shuffle)
+                controller.setMediaItems(mediaItems, startIndex.coerceIn(0, mediaItems.lastIndex), 0L)
+                controller.prepare()
+                controller.play()
+            }.onSuccess {
+                startActivity(Intent(requireContext(), PlaybackActivity::class.java))
+            }.onFailure { ex ->
+                Toast.makeText(
+                    requireContext(),
+                    "播放失败：${ex.message ?: "请检查 SMB 连接与账号"}",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
-            controller.setShuffleModeEnabled(shuffle)
-            controller.setMediaItems(mediaItems, startIndex.coerceIn(0, mediaItems.lastIndex), 0L)
-            controller.prepare()
-            controller.play()
         }
     }
 
@@ -233,7 +283,11 @@ class TvBrowseFragment : Fragment() {
         future.addListener(
             {
                 runCatching { future.get() }
-                    .onSuccess { controller -> mediaController = controller }
+                    .onSuccess { controller ->
+                        mediaController = controller
+                        controller.addListener(browsePlayerListener)
+                        updateNowPlayingButton()
+                    }
                     .onFailure {
                         controllerFuture = null
                         Toast.makeText(requireContext(), "播放器连接失败", Toast.LENGTH_SHORT).show()
@@ -244,9 +298,29 @@ class TvBrowseFragment : Fragment() {
     }
 
     private fun releaseController() {
+        mediaController?.removeListener(browsePlayerListener)
         controllerFuture?.let { MediaController.releaseFuture(it) }
         controllerFuture = null
         mediaController = null
+        updateNowPlayingButton()
+    }
+
+    private fun updateNowPlayingButton() {
+        val controller = mediaController
+        val hasNowPlaying = controller?.currentMediaItem != null
+        btnNowPlaying.visibility = if (hasNowPlaying) View.VISIBLE else View.GONE
+        if (!hasNowPlaying) return
+
+        val title = controller?.mediaMetadata?.title?.toString().orEmpty()
+        btnNowPlaying.text = if (title.isBlank()) "回到当前播放" else "回到当前播放：$title"
+    }
+
+    private fun currentQueueUris(controller: MediaController): List<String> {
+        return buildList {
+            repeat(controller.mediaItemCount) { index ->
+                controller.getMediaItemAt(index).localConfiguration?.uri?.toString()?.let(::add)
+            }
+        }
     }
 
     private fun showConnectionManagerDialog() {

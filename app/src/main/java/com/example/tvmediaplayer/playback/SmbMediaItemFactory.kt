@@ -23,6 +23,7 @@ class SmbMediaItemFactory {
                 resolveArtworkUri(config, directoryPath, context)
             }
             MediaItem.Builder()
+                .setMediaId(entry.fullPath)
                 .setUri(requireNotNull(entry.streamUri))
                 .setMediaMetadata(
                     MediaMetadata.Builder()
