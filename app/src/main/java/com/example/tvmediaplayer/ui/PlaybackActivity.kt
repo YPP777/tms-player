@@ -25,6 +25,7 @@ import com.example.tvmediaplayer.playback.PlaybackService
 import com.example.tvmediaplayer.playback.SmbContextFactory
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
+import java.io.File
 import jcifs.smb.SmbFile
 import jcifs.smb.SmbFileInputStream
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +34,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.jaudiotagger.audio.AudioFileIO
 
 class PlaybackActivity : FragmentActivity() {
 
@@ -244,21 +246,18 @@ class PlaybackActivity : FragmentActivity() {
     }
 
     private fun maybeLoadArtwork(player: Player) {
-        val artworkUri = player.mediaMetadata.artworkUri?.toString()
-        if (artworkUri.isNullOrBlank() || artworkUri == currentArtworkKey) return
-        currentArtworkKey = artworkUri
+        val mediaItem = player.currentMediaItem ?: return
+        val artworkKey = mediaItem.mediaId + "|" + mediaItem.localConfiguration?.uri
+        if (artworkKey == currentArtworkKey) return
+        currentArtworkKey = artworkKey
         val config = PlaybackConfigStore.current()
+        ivArtwork.setImageResource(R.drawable.ic_launcher_foreground)
 
         lifecycleScope.launch {
             val bitmap = withContext(Dispatchers.IO) {
-                runCatching {
-                    val smbFile = SmbFile(artworkUri, SmbContextFactory.build(config))
-                    SmbFileInputStream(smbFile).use { stream ->
-                        BitmapFactory.decodeStream(stream)
-                    }
-                }.getOrNull()
+                loadArtworkBitmap(config, mediaItem)
             }
-            if (currentArtworkKey != artworkUri) return@launch
+            if (currentArtworkKey != artworkKey) return@launch
             if (bitmap != null) {
                 ivArtwork.setImageBitmap(bitmap)
             } else {
@@ -266,6 +265,53 @@ class PlaybackActivity : FragmentActivity() {
             }
         }
     }
+
+    private fun loadArtworkBitmap(
+        config: com.example.tvmediaplayer.domain.model.SmbConfig,
+        mediaItem: androidx.media3.common.MediaItem
+    ) = runCatching {
+        val artworkUri = mediaItem.mediaMetadata.artworkUri?.toString().orEmpty()
+        if (artworkUri.isNotBlank()) {
+            loadSmbBitmap(artworkUri, config)?.let { return@runCatching it }
+        }
+
+        val mediaUri = mediaItem.localConfiguration?.uri?.toString().orEmpty()
+        if (mediaUri.startsWith("smb://", ignoreCase = true)) {
+            val parent = mediaUri.substringBeforeLast('/', "")
+            val candidates = listOf("folder.jpg", "cover.jpg", "front.jpg")
+            for (name in candidates) {
+                loadSmbBitmap("$parent/$name", config)?.let { return@runCatching it }
+            }
+            loadEmbeddedArtwork(mediaUri, config)?.let { return@runCatching it }
+        }
+        null
+    }.getOrNull()
+
+    private fun loadSmbBitmap(
+        smbUrl: String,
+        config: com.example.tvmediaplayer.domain.model.SmbConfig
+    ) = runCatching {
+        val smbFile = SmbFile(smbUrl, SmbContextFactory.build(config))
+        if (!smbFile.exists() || smbFile.isDirectory) return@runCatching null
+        SmbFileInputStream(smbFile).use { stream -> BitmapFactory.decodeStream(stream) }
+    }.getOrNull()
+
+    private fun loadEmbeddedArtwork(
+        mediaSmbUrl: String,
+        config: com.example.tvmediaplayer.domain.model.SmbConfig
+    ) = runCatching {
+        val smbFile = SmbFile(mediaSmbUrl, SmbContextFactory.build(config))
+        val temp = File.createTempFile("artwork-", ".tmp")
+        try {
+            SmbFileInputStream(smbFile).use { input ->
+                temp.outputStream().use { output -> input.copyTo(output) }
+            }
+            val artwork = AudioFileIO.read(temp).tag?.firstArtwork ?: return@runCatching null
+            BitmapFactory.decodeByteArray(artwork.binaryData, 0, artwork.binaryData.size)
+        } finally {
+            temp.delete()
+        }
+    }.getOrNull()
 
     private fun releaseController() {
         progressJob?.cancel()
