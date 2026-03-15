@@ -80,15 +80,17 @@
                 android:textSize="18sp"
                 android:fontFamily="@font/misans_medium" />
 
-            <ProgressBar
+            <SeekBar
                 android:id="@+id/pb_playback"
-                style="?android:attr/progressBarStyleHorizontal"
                 android:layout_width="match_parent"
-                android:layout_height="10dp"
+                android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:max="1000"
                 android:progressTint="#34D399"
                 android:progressBackgroundTint="#334155"
-                android:max="1000" />
+                android:thumbTint="#EAF2FF" />
 
             <TextView
                 android:layout_width="wrap_content"

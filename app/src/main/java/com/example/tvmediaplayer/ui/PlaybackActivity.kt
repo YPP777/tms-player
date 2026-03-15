@@ -1,21 +1,24 @@
-package com.example.tvmediaplayer.ui
+﻿package com.example.tvmediaplayer.ui
 
 import android.content.ComponentName
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.os.Bundle
+import android.view.KeyEvent
 import android.widget.Button
 import android.widget.ImageView
-import android.widget.ProgressBar
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.C
+import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.example.tvmediaplayer.R
+import com.example.tvmediaplayer.domain.model.SmbConfig
 import com.example.tvmediaplayer.domain.model.SmbEntry
 import com.example.tvmediaplayer.lyrics.LrcParser
 import com.example.tvmediaplayer.lyrics.LrcTimeline
@@ -52,7 +55,7 @@ class PlaybackActivity : FragmentActivity() {
     private lateinit var tvArtist: TextView
     private lateinit var tvAlbum: TextView
     private lateinit var tvTime: TextView
-    private lateinit var pbProgress: ProgressBar
+    private lateinit var pbProgress: SeekBar
     private lateinit var tvLyricPrev: TextView
     private lateinit var tvLyricCurrent: TextView
     private lateinit var tvLyricNext: TextView
@@ -122,6 +125,24 @@ class PlaybackActivity : FragmentActivity() {
             startActivity(Intent(this, LyricsFullscreenActivity::class.java))
         }
         btnBack.setOnClickListener { finish() }
+
+        pbProgress.setOnKeyListener { _, keyCode, event ->
+            if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+            if (keyCode != KeyEvent.KEYCODE_DPAD_LEFT && keyCode != KeyEvent.KEYCODE_DPAD_RIGHT) {
+                return@setOnKeyListener false
+            }
+            val controller = mediaController ?: return@setOnKeyListener false
+            val duration = controller.duration
+            if (duration <= 0 || duration == C.TIME_UNSET) return@setOnKeyListener true
+
+            val step = seekStepMs(event.repeatCount)
+            val delta = if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) step else -step
+            val target = (controller.currentPosition + delta).coerceIn(0L, duration)
+            controller.seekTo(target)
+            renderProgress(target, duration)
+            renderLyrics(target)
+            true
+        }
     }
 
     private fun ensureController() {
@@ -266,10 +287,7 @@ class PlaybackActivity : FragmentActivity() {
         }
     }
 
-    private fun loadArtworkBitmap(
-        config: com.example.tvmediaplayer.domain.model.SmbConfig,
-        mediaItem: androidx.media3.common.MediaItem
-    ) = runCatching {
+    private fun loadArtworkBitmap(config: SmbConfig, mediaItem: MediaItem) = runCatching {
         val artworkUri = mediaItem.mediaMetadata.artworkUri?.toString().orEmpty()
         if (artworkUri.isNotBlank()) {
             loadSmbBitmap(artworkUri, config)?.let { return@runCatching it }
@@ -287,19 +305,13 @@ class PlaybackActivity : FragmentActivity() {
         null
     }.getOrNull()
 
-    private fun loadSmbBitmap(
-        smbUrl: String,
-        config: com.example.tvmediaplayer.domain.model.SmbConfig
-    ) = runCatching {
+    private fun loadSmbBitmap(smbUrl: String, config: SmbConfig) = runCatching {
         val smbFile = SmbFile(smbUrl, SmbContextFactory.build(config))
         if (!smbFile.exists() || smbFile.isDirectory) return@runCatching null
         SmbFileInputStream(smbFile).use { stream -> BitmapFactory.decodeStream(stream) }
     }.getOrNull()
 
-    private fun loadEmbeddedArtwork(
-        mediaSmbUrl: String,
-        config: com.example.tvmediaplayer.domain.model.SmbConfig
-    ) = runCatching {
+    private fun loadEmbeddedArtwork(mediaSmbUrl: String, config: SmbConfig) = runCatching {
         val smbFile = SmbFile(mediaSmbUrl, SmbContextFactory.build(config))
         val temp = File.createTempFile("artwork-", ".tmp")
         try {
@@ -328,5 +340,15 @@ class PlaybackActivity : FragmentActivity() {
         val minutes = totalSeconds / 60
         val seconds = totalSeconds % 60
         return String.format("%02d:%02d", minutes, seconds)
+    }
+
+    private fun seekStepMs(repeatCount: Int): Long {
+        return when {
+            repeatCount < 5 -> 5_000L
+            repeatCount < 12 -> 10_000L
+            repeatCount < 25 -> 30_000L
+            repeatCount < 40 -> 60_000L
+            else -> 90_000L
+        }
     }
 }
