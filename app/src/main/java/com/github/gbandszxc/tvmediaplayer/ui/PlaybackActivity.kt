@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.os.Bundle
+import android.util.Log
 import android.view.KeyEvent
 import android.widget.Button
 import android.widget.ImageView
@@ -32,6 +33,8 @@ import com.github.gbandszxc.tvmediaplayer.playback.SmbContextFactory
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
 import jcifs.smb.SmbFile
 import jcifs.smb.SmbFileInputStream
 import kotlinx.coroutines.Dispatchers
@@ -43,6 +46,10 @@ import kotlinx.coroutines.withContext
 import org.jaudiotagger.audio.AudioFileIO
 
 class PlaybackActivity : FragmentActivity() {
+
+    companion object {
+        private const val TAG = "PlaybackActivity"
+    }
 
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var mediaController: MediaController? = null
@@ -248,6 +255,7 @@ class PlaybackActivity : FragmentActivity() {
         }
         val uri = mediaItem.localConfiguration?.uri?.toString().orEmpty()
         val fullPath = mediaItem.mediaId
+        Log.d(TAG, "maybeLoadLyrics: configHost=${config.host}, uri=$uri, fullPath=$fullPath")
         val fileName = fullPath.substringAfterLast('/').ifBlank {
             mediaItem.mediaMetadata.title?.toString().orEmpty()
         }
@@ -265,6 +273,7 @@ class PlaybackActivity : FragmentActivity() {
             if (currentLyricKey != key) return@launch
             currentTimeline = timeline
             if (timeline == null || timeline.lines.isEmpty()) {
+                Log.d(TAG, "maybeLoadLyrics: no lyrics for key=$key")
                 tvLyricCurrent.text = "暂无歌词"
                 tvLyricPrev.text = ""
                 tvLyricNext.text = ""
@@ -355,13 +364,14 @@ class PlaybackActivity : FragmentActivity() {
 
     private fun loadEmbeddedArtwork(mediaSmbUrl: String, config: SmbConfig) = runCatching {
         val smbFile = SmbFile(mediaSmbUrl, SmbContextFactory.build(config))
-        val suffix = mediaSmbUrl.substringAfterLast('.', "").lowercase().let {
-            if (it.isBlank() || it.length > 8) ".tmp" else ".$it"
-        }
-        val temp = File.createTempFile("artwork-", suffix)
+        val ext = mediaSmbUrl.substringAfterLast('.', "").lowercase()
+        val suffix = if (ext.isBlank() || ext.length > 8) "tmp" else ext
+        val temp = File.createTempFile("artwork-", ".$suffix")
         try {
             SmbFileInputStream(smbFile).use { input ->
-                temp.outputStream().use { output -> input.copyTo(output) }
+                temp.outputStream().use { output ->
+                    if (suffix == "mp3") copyId3TagRegion(input, output) else input.copyTo(output)
+                }
             }
             val artwork = AudioFileIO.read(temp).tag?.firstArtwork ?: return@runCatching null
             BitmapFactory.decodeByteArray(artwork.binaryData, 0, artwork.binaryData.size)
@@ -369,6 +379,46 @@ class PlaybackActivity : FragmentActivity() {
             temp.delete()
         }
     }.getOrNull()
+
+    /**
+     * MP3 专用：只把 ID3v2 tag 区域复制到 output，跳过后续音频数据。
+     * ID3v2 封面在文件头部，通常几十到几百 KB，远小于完整音频文件。
+     * 若文件没有 ID3v2 header 则回退复制全部内容。
+     */
+    private fun copyId3TagRegion(input: InputStream, output: OutputStream) {
+        val header = ByteArray(10)
+        var totalRead = 0
+        while (totalRead < 10) {
+            val n = input.read(header, totalRead, 10 - totalRead)
+            if (n < 0) break
+            totalRead += n
+        }
+        output.write(header, 0, totalRead)
+        if (totalRead < 10) { input.copyTo(output); return }
+        // 检查 "ID3" 标识
+        if (header[0] != 0x49.toByte() || header[1] != 0x44.toByte() || header[2] != 0x33.toByte()) {
+            input.copyTo(output); return
+        }
+        // ID3v2 tag size 使用 syncsafe integer（每字节只用低7位）
+        val tagContentSize =
+            ((header[6].toInt() and 0x7F) shl 21) or
+            ((header[7].toInt() and 0x7F) shl 14) or
+            ((header[8].toInt() and 0x7F) shl  7) or
+             (header[9].toInt() and 0x7F)
+        var remaining = tagContentSize.toLong()
+        val buf = ByteArray(8192)
+        while (remaining > 0) {
+            val n = input.read(buf, 0, minOf(buf.size.toLong(), remaining).toInt())
+            if (n < 0) break
+            output.write(buf, 0, n)
+            remaining -= n
+        }
+        // jaudiotagger 解析 MP3 需要在 tag 后找到音频帧 sync word，
+        // 多读 64KB 确保它能找到第一个音频帧（stream 仍在 tag 末尾位置）。
+        val audioBuf = ByteArray(65536)
+        val audioRead = input.read(audioBuf)
+        if (audioRead > 0) output.write(audioBuf, 0, audioRead)
+    }
 
     private fun releaseController() {
         progressJob?.cancel()
