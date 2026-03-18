@@ -72,3 +72,20 @@ fastlane/test_output/
 
 
 sample/
+
+# local env / secret-like files
+.env
+.env.*
+*.pem
+*.p12
+*.crt
+*.key
+
+# OS / editor temp
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# local AI/tool artifacts
+.agent_prompt/

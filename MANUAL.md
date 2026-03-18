@@ -74,6 +74,7 @@
 70. 已修复外置歌词文件名全角/半角不一致导致无法匹配的问题：精确路径命中失败时，遍历父目录并通过 `normalizeWidth`（全角 ASCII → 半角）+ 大小写不敏感做模糊匹配，兼容语音识别工具混用 `！`/`!`、`？`/`?` 等字符的场景。
 71. 版本升至 `1.0.1`（`versionCode=2`），包含封面与歌词加载修复。
 72. 已统一 APK 输出命名规则为 `tms-player-<buildType>-<versionName>.apk`（例如 `tms-player-debug-1.0.1.apk`、`tms-player-release-1.0.1.apk`）。
+73. 已补充 `.gitignore` 仓库忽略增强项：`*.pem/*.p12/*.crt/*.key`、`.env*`、常见系统/编辑器临时文件与本地 `.agent_prompt/` 工具目录，降低敏感信息与无关文件误提交风险。
 
 ## 1. 当前项目定位
 
