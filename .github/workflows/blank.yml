@@ -28,8 +28,27 @@ jobs:
         run: |
           ./gradlew assembleDebug
       
-      - name: Upload Debug APK
+      - name: List all APK files (debugging)
+        run: |
+          find app/build/outputs/apk -name "*.apk" | sort
+      
+      - name: Upload Dev Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk
-          path: app/build/outputs/apk/debug/
+          name: app-dev-debug-apk
+          path: app/build/outputs/apk/dev/debug/*.apk
+        if: success() || failure()
+      
+      - name: Upload Tv Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-tv-debug-apk
+          path: app/build/outputs/apk/tv/debug/*.apk
+        if: success() || failure()
+      
+      - name: Upload any APK (fallback)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-any-apk
+          path: app/build/outputs/apk/**/*.apk
+        if: success() || failure()
